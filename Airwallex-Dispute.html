@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airwallex 支付争议模拟器 (修复版)</title>
+    <style>
+        :root {
+            --primary-color: #635bff;
+            --bg-color: #f6f9fc;
+            --card-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #e6e6e6;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            display: grid;
+            gap: 20px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 5px solid #ccc;
+        }
+        
+        .status-bar.has-token {
+            border-left-color: var(--success-color);
+        }
+
+        .token-status {
+            font-weight: bold;
+            color: #666;
+        }
+        .has-token .token-status {
+            color: var(--success-color);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: #e0e0e0;
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            background: #e0e0e0;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+            min-width: 120px;
+        }
+
+        .tab-btn:hover {
+            background: #d4d4d4;
+        }
+
+        .tab-btn.active {
+            background: var(--card-bg);
+            color: var(--primary-color);
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        /* Panels */
+        .panel {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(99, 91, 255, 0.2);
+        }
+
+        button.action-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+
+        button.action-btn:hover {
+            background-color: #5046e5;
+        }
+        
+        button.action-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Console Output */
+        .console-output {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            white-space: pre-wrap;
+            min-height: 150px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .hidden-token {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Airwallex 支付争议模拟器</h1>
+        <p>集成了 Token 获取、争议创建、解决与升级的全流程测试工具</p>
+    </div>
+
+    <!-- 状态栏 -->
+    <div class="status-bar" id="statusBar">
+        <div>
+            <span class="token-status" id="tokenStatusText">未检测到 Token</span>
+            <div style="font-size: 0.8em; color: #888; margin-top: 4px;">API Base URL: <span id="baseUrlDisplay">https://api-demo.airwallex.com/api/v1</span></div>
+        </div>
+        <button onclick="clearToken()" style="padding: 5px 10px; font-size: 12px; cursor: pointer;">清除 Token</button>
+    </div>
+
+    <!-- 隐藏的 Token 存储字段 -->
+    <input type="hidden" id="accessToken">
+
+    <!-- 选项卡导航 -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('auth')">0. 获取 Token</button>
+        <button class="tab-btn" onclick="switchTab('create')">1. 创建争议</button>
+        <button class="tab-btn" onclick="switchTab('resolve')">2. 解决争议</button>
+        <button class="tab-btn" onclick="switchTab('escalate')">3. 升级争议</button>
+    </div>
+
+    <!-- 0. 获取 Token 面板 -->
+    <div id="panel-auth" class="panel active">
+        <h3>配置 API 凭证 (Authentication)</h3>
+        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">
+            请输入你的 Client ID 和 API Key 来获取 Access Token。这些信息通常在 Airwallex 商户后台的 "Developer" -> "API keys" 中找到。
+        </p>
+        
+        <div class="form-group">
+            <label>Client ID (x-client-id)</label>
+            <input type="text" id="auth_client_id" placeholder="例如: 8a88xxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+        </div>
+        
+        <div class="form-group">
+            <label>API Key (x-api-key)</label>
+            <input type="password" id="auth_api_key" placeholder="例如: 403bxxxx...">
+        </div>
+
+        <button class="action-btn" onclick="fetchToken()" id="btnFetchToken">获取 Access Token</button>
+    </div>
+
+    <!-- 1. 创建争议面板 -->
+    <div id="panel-create" class="panel">
+        <h3>模拟创建一个新的争议</h3>
+        <div class="form-group">
+            <label>Payment Intent ID *</label>
+            <input type="text" id="create_pi_id" placeholder="int_xxxxxxxxxxxx">
+        </div>
+        
+        <div class="grid-2">
+            <div class="form-group">
+                <label>Stage (阶段)</label>
+                <select id="create_stage">
+                    <option value="RFI">RFI (信息请求)</option>
+                    <option value="PRE_CHARGEBACK">PRE_CHARGEBACK</option>
+                    <option value="CHARGEBACK" selected>CHARGEBACK (拒付)</option>
+                    <option value="PRE_ARBITRATION">PRE_ARBITRATION</option>
+                </select>
+            </div>
+            
+            <!-- 这里修改为下拉选择框 -->
+            <div class="form-group">
+                <label>Reason Code (原因代码)</label>
+                <select id="create_reason">
+                    <optgroup label="VISA (如果 PI 是 Visa 卡)">
+                        <option value="10.4" selected>10.4 - Other Fraud (欺诈)</option>
+                        <option value="13.1">13.1 - Merchandise Not Received (未收到货)</option>
+                        <option value="13.3">13.3 - Not as Described (货不对板)</option>
+                        <option value="12.6">12.6 - Duplicate Processing (重复扣款)</option>
+                    </optgroup>
+                    <optgroup label="Mastercard (如果 PI 是 Master 卡)">
+                        <option value="4837">4837 - No Cardholder Authorization (欺诈)</option>
+                        <option value="4855">4855 - Goods Not Delivered (未收到货)</option>
+                        <option value="4853">4853 - Goods Defective (货不对板)</option>
+                        <option value="4834">4834 - Point of Interaction Error (处理错误)</option>
+                    </optgroup>
+                </select>
+                <div style="font-size: 12px; color: #888; margin-top: 4px;">请务必根据卡的品牌选择正确的代码</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="form-group">
+                <label>Amount (金额)</label>
+                <input type="number" id="create_amount" value="100">
+            </div>
+            <div class="form-group">
+                <label>Due At (截止时间)</label>
+                <input type="datetime-local" id="create_due_at">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Comment</label>
+            <textarea id="create_comment" rows="2">The payment is fraudulent</textarea>
+        </div>
+
+        <button class="action-btn" onclick="createDispute()">发送创建请求</button>
+    </div>
+
+    <!-- 2. 解决争议面板 -->
+    <div id="panel-resolve" class="panel">
+        <h3>模拟解决/判定一个争议</h3>
+        <div class="form-group">
+            <label>Dispute ID * (创建成功后自动填入)</label>
+            <input type="text" id="resolve_id" placeholder="dst_xxxxxxxxxxxx">
+        </div>
+
+        <div class="form-group">
+            <label>In Favor Of (判决结果)</label>
+            <select id="resolve_favor">
+                <option value="MERCHANT">MERCHANT (商户胜诉/WON)</option>
+                <option value="CUSTOMER">CUSTOMER (商户败诉/LOST)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Amount (解决金额)</label>
+            <input type="number" id="resolve_amount" value="100">
+        </div>
+
+        <div class="form-group">
+            <label>Comment</label>
+            <textarea id="resolve_comment" rows="2">Evidence accepted.</textarea>
+        </div>
+
+        <button class="action-btn" onclick="resolveDispute()">发送解决请求</button>
+    </div>
+
+    <!-- 3. 升级争议面板 -->
+    <div id="panel-escalate" class="panel">
+        <h3>模拟升级争议 (拒绝证据)</h3>
+        <div class="form-group">
+            <label>Dispute ID *</label>
+            <input type="text" id="escalate_id" placeholder="dst_xxxxxxxxxxxx">
+        </div>
+
+        <div class="form-group">
+            <label>Due Date (新的截止时间)</label>
+            <input type="datetime-local" id="escalate_due_at">
+        </div>
+
+        <div class="form-group">
+            <label>Comment</label>
+            <textarea id="escalate_comment" rows="2">Evidence insufficient, escalating to next stage.</textarea>
+        </div>
+
+        <button class="action-btn" onclick="escalateDispute()">发送升级请求</button>
+    </div>
+
+    <!-- 结果输出 -->
+    <div>
+        <h3>控制台日志</h3>
+        <div class="console-output" id="console">等待操作...</div>
+    </div>
+</div>
+
+<script>
+    // --- 配置与初始化 ---
+    const BASE_URL = 'https://api-demo.airwallex.com/api/v1';
+
+    // 时间工具
+    const toLocalISO = (date) => {
+        const pad = (num) => (num < 10 ? '0' : '') + num;
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+    
+    // 初始化默认时间
+    const now = new Date();
+    document.getElementById('create_due_at').value = toLocalISO(new Date(now.getTime() + (3 * 86400000)));
+    document.getElementById('escalate_due_at').value = toLocalISO(new Date(now.getTime() + (7 * 86400000)));
+
+    // 从本地存储加载数据
+    window.onload = function() {
+        const storedToken = localStorage.getItem('awx_sim_token');
+        if (storedToken) {
+            setTokenState(storedToken);
+            log('System', '检测到本地存储的 Token，已自动加载。');
+        }
+        
+        document.getElementById('auth_client_id').value = localStorage.getItem('awx_client_id') || '';
+        document.getElementById('auth_api_key').value = localStorage.getItem('awx_api_key') || '';
+    };
+
+    // --- 核心逻辑 ---
+
+    function log(title, data) {
+        const consoleDiv = document.getElementById('console');
+        const timestamp = new Date().toLocaleTimeString();
+        let content = `\n[${timestamp}] === ${title} ===\n`;
+        
+        if (typeof data === 'object') {
+            content += JSON.stringify(data, null, 2);
+        } else {
+            content += data;
+        }
+        
+        // 插入到最前面
+        consoleDiv.innerHTML = content + "\n\n--------------------------\n" + consoleDiv.innerHTML;
+    }
+
+    function setTokenState(token) {
+        document.getElementById('accessToken').value = token;
+        localStorage.setItem('awx_sim_token', token);
+        
+        const statusBar = document.getElementById('statusBar');
+        const statusText = document.getElementById('tokenStatusText');
+        
+        statusBar.classList.add('has-token');
+        statusText.innerText = "Token 有效 (Ready to use)";
+    }
+
+    function clearToken() {
+        localStorage.removeItem('awx_sim_token');
+        document.getElementById('accessToken').value = '';
+        document.getElementById('statusBar').classList.remove('has-token');
+        document.getElementById('tokenStatusText').innerText = "未检测到 Token";
+        log('System', 'Token 已清除');
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        
+        // 找到对应的按钮并激活
+        const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.includes(tabName) || b.onclick.toString().includes(tabName));
+        if(btn) btn.classList.add('active');
+        
+        document.getElementById(`panel-${tabName}`).classList.add('active');
+    }
+
+    // --- API 请求封装 ---
+    async function sendRequest(endpoint, method, body, isAuth = false) {
+        const url = `${BASE_URL}${endpoint}`;
+        const token = document.getElementById('accessToken').value;
+
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+
+        if (!isAuth) {
+            if (!token) {
+                alert("请先在 '0. 获取 Token' 面板获取 Token！");
+                switchTab('auth');
+                return null;
+            }
+            headers['Authorization'] = `Bearer ${token}`;
+        } else {
+            // Auth 接口需要特定的 header
+            headers['x-client-id'] = document.getElementById('auth_client_id').value;
+            headers['x-api-key'] = document.getElementById('auth_api_key').value;
+        }
+
+        log(`发送请求: ${method} ${endpoint}`, isAuth ? "Credentials Hidden" : body);
+
+        try {
+            const btn = document.querySelector('.panel.active .action-btn');
+            if(btn) btn.disabled = true;
+
+            const response = await fetch(url, {
+                method: method,
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+            
+            if(btn) btn.disabled = false;
+
+            if (!response.ok) {
+                log("请求失败 (Error)", data);
+                return null;
+            } else {
+                log("请求成功 (Success)", data);
+                return data;
+            }
+        } catch (error) {
+            log("网络错误 (Network Error)", error.message);
+            const btn = document.querySelector('.panel.active .action-btn');
+            if(btn) btn.disabled = false;
+            return null;
+        }
+    }
+
+    // --- 业务功能函数 ---
+
+    // 0. 获取 Token
+    async function fetchToken() {
+        const clientId = document.getElementById('auth_client_id').value;
+        const apiKey = document.getElementById('auth_api_key').value;
+
+        if (!clientId || !apiKey) {
+            alert("请填写 Client ID 和 API Key");
+            return;
+        }
+
+        // 保存凭证到本地，方便下次使用
+        localStorage.setItem('awx_client_id', clientId);
+        localStorage.setItem('awx_api_key', apiKey);
+
+        const data = await sendRequest('/authentication/login', 'POST', {}, true);
+
+        if (data && data.token) {
+            setTokenState(data.token);
+            alert("Token 获取成功！你可以开始模拟争议了。");
+            switchTab('create'); // 自动跳到下一步
+        }
+    }
+
+    // 1. 创建争议
+    async function createDispute() {
+        const body = {
+            payment_intent_id: document.getElementById('create_pi_id').value,
+            stage: document.getElementById('create_stage').value,
+            reason_code: document.getElementById('create_reason').value,
+            amount: parseFloat(document.getElementById('create_amount').value),
+            due_at: new Date(document.getElementById('create_due_at').value).toISOString(),
+            comment: document.getElementById('create_comment').value,
+            documents: [] 
+        };
+        
+        const data = await sendRequest('/simulation/pa/payment_disputes/create', 'POST', body);
+        
+        if (data && data.id) {
+            // 自动填充 ID 到其他 Tab
+            document.getElementById('resolve_id').value = data.id;
+            document.getElementById('escalate_id').value = data.id;
+        }
+    }
+
+    // 2. 解决争议
+    async function resolveDispute() {
+        const disputeId = document.getElementById('resolve_id').value;
+        if (!disputeId) return alert("请输入 Dispute ID");
+
+        const body = {
+            in_favor_of: document.getElementById('resolve_favor').value,
+            amount: parseFloat(document.getElementById('resolve_amount').value),
+            comment: document.getElementById('resolve_comment').value
+        };
+
+        await sendRequest(`/simulation/pa/payment_disputes/${disputeId}/resolve`, 'POST', body);
+    }
+
+    // 3. 升级争议
+    async function escalateDispute() {
+        const disputeId = document.getElementById('escalate_id').value;
+        if (!disputeId) return alert("请输入 Dispute ID");
+
+        const body = {
+            due_at: new Date(document.getElementById('escalate_due_at').value).toISOString(),
+            comment: document.getElementById('escalate_comment').value,
+            documents: []
+        };
+
+        await sendRequest(`/simulation/pa/payment_disputes/${disputeId}/escalate`, 'POST', body);
+    }
+</script>
+
+</body>
+</html>
